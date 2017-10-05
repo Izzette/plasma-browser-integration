@@ -4,8 +4,6 @@
     padding: 0;
     /* color of separator line below heading */
     background-color: #d3d3d3;
-    /* undo body margins to make tab bar stick to the top*/
-    margin: -15px -17px 0px -17px;
     padding: 0px 17px;
 }
 .tabbar > li {
@@ -17,20 +15,24 @@
     border: 1px solid #999;
     border-bottom: none;
 }
-.tabbar > li > a {
+.tabbar > li > button {
     display: block;
     text-decoration: none;
     color: #333; /* can we just reset it to default text color?*/
     padding: 4px 8px;
+    border: none;
 }
 
-.tabbar > li > a.active {
+.tabbar > li > button.active {
     font-weight: bold;
     background-color: #fff;
 }
 
 .tab {
     display: none;
+    max-width: 100%;
+    margin: 0 -15px;
+    padding: 15px;
 }
 
 .tab.active {
@@ -38,7 +40,7 @@
 }
 
 #extensions-selection {
-    padding: 0;
+    padding: 5px;
 }
 #extensions-selection > li {
     display: block;
