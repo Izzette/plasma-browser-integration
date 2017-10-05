@@ -4,7 +4,7 @@
   "name": "Plasma Integration",
   "short_name": "Plasma",
   "description": "Provides better integration with the KDE Plasma 5 desktop.",
-  "version": "0.0.3",
+  "version": "0.0.3.1",
 
   "default_locale": "en",
 
@@ -50,7 +50,7 @@
   ],
     "applications": {
     "gecko": {
-      "id": "plasma-browser-integration@kde.org",
+      "id": "plasma-browser-integration@izzette.com",
       "strict_min_version": "50.0"
     }
   },
