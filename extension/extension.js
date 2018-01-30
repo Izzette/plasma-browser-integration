@@ -255,6 +255,18 @@ addCallback("mpris", "setPosition", function (message) {
     }
 })
 
+addCallback("mpris", "setPlaybackRate", function (message) {
+    if (currentPlayerTabId) {
+        chrome.tabs.sendMessage(currentPlayerTabId, {
+            subsystem: "mpris",
+            action: "setPlaybackRate",
+            payload: {
+                playbackRate: message.playbackRate
+            }
+        });
+    }
+});
+
 // callbacks from a browser tab to our extension
 addRuntimeCallback("mpris", "playing", function (message, sender) {
     currentPlayerTabId = sender.tab.id;
@@ -281,7 +293,7 @@ addRuntimeCallback("mpris", ["paused", "stopped", "waiting", "canplay"], functio
     }
 });
 
-addRuntimeCallback("mpris", ["duration", "timeupdate", "seeked", "volumechange"], function (message, sender, action) {
+addRuntimeCallback("mpris", ["duration", "timeupdate", "seeking", "seeked", "ratechange", "volumechange"], function (message, sender, action) {
     if (currentPlayerTabId == sender.tab.id) {
         sendPortMessage("mpris", action, message);
     }
@@ -478,7 +490,7 @@ addCallback("tabsrunner", "setMuted", function (message) {
 
 // only forward certain tab properties back to our host
 var whitelistedTabProperties = [
-    "id", "active", "audible", "favIconUrl", "incognito", "title", "url"
+    "id", "active", "audible", "favIconUrl", "incognito", "title", "url", "mutedInfo"
 ];
 
 // FIXME We really should enforce some kind of security policy, so only e.g. plasmashell and krunner

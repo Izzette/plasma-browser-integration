@@ -38,6 +38,9 @@ function executeScript(script) {
     var element = document.createElement('script');
     element.innerHTML = '('+ script +')();';
     (document.body || document.head || document.documentElement).appendChild(element);
+    // We need to remove the script tag after inserting or else websites relying on the order of items in
+    // document.getElementsByTagName("script") will break (looking at you, Google Hangouts)
+    element.parentNode.removeChild(element);
 }
 
 chrome.runtime.onMessage.addListener(function (message, sender) {
@@ -78,6 +81,8 @@ var playerCallbacks = [];
 
 var players = [];
 
+var pendingSeekingUpdate = 0;
+
 addCallback("mpris", "play", function () {
     playerPlay();
 });
@@ -115,19 +120,41 @@ addCallback("mpris", "stop", function () {
 
 addCallback("mpris", "next", function () {
     if (playerCallbacks.indexOf("nexttrack") > -1) {
-        executeScript("plasmaMediaSessions.executeCallback('nexttrack')");
+        executeScript(`
+            function() {
+                try {
+                    plasmaMediaSessions.executeCallback("nexttrack");
+                } catch (e) {
+                    console.warn("Exception executing 'nexttrack' media sessions callback", e);
+                }
+            }
+        `);
     }
 });
 
 addCallback("mpris", "previous", function () {
     if (playerCallbacks.indexOf("previoustrack") > -1) {
-        executeScript("plasmaMediaSessions.executeCallback('previoustrack')");
+        executeScript(`
+            function() {
+                try {
+                    plasmaMediaSessions.executeCallback("previoustrack");
+                } catch (e) {
+                    console.warn("Exception executing 'previoustrack' media sessions callback", e);
+                }
+            }
+        `);
     }
 });
 
 addCallback("mpris", "setPosition", function (message) {
     if (activePlayer) {
         activePlayer.currentTime = message.position;
+    }
+});
+
+addCallback("mpris", "setPlaybackRate", function (message) {
+    if (activePlayer) {
+        activePlayer.playbackRate = message.playbackRate;
     }
 });
 
@@ -152,12 +179,14 @@ addCallback("mpris", "checkPlayer", function () {
 
 function setPlayerActive(player) {
     activePlayer = player;
+
     // when playback starts, send along metadata
     // a website might have set Media Sessions metadata prior to playing
     // and then we would have ignored the metadata signal because there was no player
     sendMessage("mpris", "playing", {
         duration: player.duration,
         currentTime: player.currentTime,
+        playbackRate: player.playbackRate,
         volume: player.volume,
         loop: player.loop,
         metadata: playerMetadata,
@@ -212,10 +241,31 @@ function registerPlayer(player) {
         });
     });
 
+    player.addEventListener("ratechange", function () {
+        sendPlayerInfo(player, "ratechange", {
+            playbackRate: player.playbackRate
+        });
+    });
+
     // TODO use player.seekable for determining whether we can seek?
     player.addEventListener("durationchange", function () {
         sendPlayerInfo(player, "duration", {
             duration: player.duration
+        });
+    });
+
+    player.addEventListener("seeking", function () {
+        if (pendingSeekingUpdate) {
+            return;
+        }
+
+        // Compress "seeking" signals, this is invoked continuously as the user drags the slider
+        pendingSeekingUpdate = setTimeout(function() {
+            pendingSeekingUpdate = 0;
+        }, 250);
+
+        sendPlayerInfo(player, "seeking", {
+            currentTime: player.currentTime
         });
     });
 
@@ -243,7 +293,15 @@ function registerAllPlayers() {
 function playerPlay() {
     // if a media sessions callback is registered, it takes precedence over us manually messing with the player
     if (playerCallbacks.indexOf("play") > -1) {
-        executeScript("plasmaMediaSessions.executeCallback('play')");
+        executeScript(`
+            function() {
+                try {
+                    plasmaMediaSessions.executeCallback("play");
+                } catch (e) {
+                    console.warn("Exception executing 'play' media sessions callback", e);
+                }
+            }
+        `);
     } else if (activePlayer) {
         activePlayer.play();
     }
@@ -251,7 +309,15 @@ function playerPlay() {
 
 function playerPause() {
     if (playerCallbacks.indexOf("pause") > -1) {
-        executeScript("plasmaMediaSessions.executeCallback('pause')");
+        executeScript(`
+            function() {
+                try {
+                    plasmaMediaSessions.executeCallback("pause");
+                } catch (e) {
+                    console.warn("Exception executing 'pause' media sessions callback", e);
+                }
+            }
+        `);
     } else if (activePlayer) {
         activePlayer.pause();
     }
@@ -317,9 +383,8 @@ if (document.documentElement.tagName.toLowerCase() === "html") {
         return v.toString(16);
     });
 
-    var scriptTag = document.createElement("script");
-    scriptTag.innerHTML = `
-        (function() {
+    executeScript(`
+        function() {
             plasmaMediaSessions = function() {};
             plasmaMediaSessions.callbacks = {};
             plasmaMediaSessions.metadata = {};
@@ -363,9 +428,8 @@ if (document.documentElement.tagName.toLowerCase() === "html") {
             window.MediaMetadata = function (data) {
                 this.data = data;
             };
-        })();
-    `;
-    (document.head || document.documentElement).appendChild(scriptTag);
+        }
+    `);
 
     // here we replace the document.createElement function with our own so we can detect
     // when an <audio> tag is created that is not added to the DOM which most pages do
@@ -374,9 +438,7 @@ if (document.documentElement.tagName.toLowerCase() === "html") {
     // so we just blatantly insert the <audio> tag in the DOM and pick it up through our regular
     // mechanism. Let's see how this goes :D
 
-    var scriptTag = document.createElement("script");
-    scriptTag.innerHTML = `
-        (function() {
+    executeScript(`function() {
             var oldCreateElement = document.createElement;
             document.createElement = function () {
                 var createdTag = oldCreateElement.apply(this, arguments);
@@ -389,9 +451,8 @@ if (document.documentElement.tagName.toLowerCase() === "html") {
 
                 return createdTag;
             };
-        })();
-    `;
-    (document.head || document.documentElement).appendChild(scriptTag);
+        }
+    `);
 
     // now the fun part of getting the stuff from our page back into our extension...
     // cannot access extensions from innocent page JS for security

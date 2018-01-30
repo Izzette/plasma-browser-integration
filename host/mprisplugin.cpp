@@ -154,6 +154,12 @@ void MPrisPlugin::handleData(const QString &event, const QJsonObject &data)
         const qreal position = data.value(QStringLiteral("currentTime")).toDouble();
         setPosition(position * 1000 * 1000);
 
+        const qreal playbackRate = data.value(QStringLiteral("playbackRate")).toDouble(1);
+        if (m_playbackRate != playbackRate) {
+            m_playbackRate = playbackRate;
+            emitPropertyChange(m_player, "Rate");
+        }
+
         // check if we're already looping, that keeps us from forcefully
         // overwriting Playlist loop with Track loop
         const bool oldLoop = m_possibleLoopStatus.value(m_loopStatus);
@@ -190,7 +196,10 @@ void MPrisPlugin::handleData(const QString &event, const QJsonObject &data)
         // not signalling to avoid excess dbus traffic
         // media controller asks for this property once when it opens
         m_position = data.value(QStringLiteral("currentTime")).toDouble() * 1000 * 1000;
-    } else if (event == QLatin1String("seeked")) {
+    } else if (event == QLatin1String("ratechange")) {
+        m_playbackRate = data.value(QStringLiteral("playbackRate")).toDouble(1);
+        emitPropertyChange(m_player, "Rate");
+    } else if (event == QLatin1String("seeking") || event == QLatin1String("seeked")) {
         // seeked is explicit user interaction, signal a change on dbus
         const qreal position = data.value(QStringLiteral("currentTime")).toDouble();
         // FIXME actually invoke "Seeked" signal
@@ -290,17 +299,31 @@ qlonglong MPrisPlugin::position() const
     return m_position;
 }
 
-qreal MPrisPlugin::minimumRate() const
+double MPrisPlugin::playbackRate() const
 {
-    return 1; // TODO
+    return m_playbackRate;
 }
 
-qreal MPrisPlugin::maximumRate() const
+void MPrisPlugin::setPlaybackRate(double playbackRate)
 {
-    return 1;
+    if (playbackRate < minimumRate() || playbackRate > maximumRate()) {
+        return;
+    }
+
+    sendData(QStringLiteral("setPlaybackRate"), {
+        {QStringLiteral("playbackRate"), playbackRate}
+    });
 }
 
-// TODO volume
+double MPrisPlugin::minimumRate() const
+{
+    return 0.01; // don't let it stop
+}
+
+double MPrisPlugin::maximumRate() const
+{
+    return 32; // random
+}
 
 QString MPrisPlugin::playbackStatus() const
 {
